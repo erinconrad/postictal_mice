@@ -1,0 +1,20 @@
+# Machine-specific paths (see local_paths_example.m)
+local_paths.m
+
+# MATLAB autosave and editor files
+*.asv
+*.m~
+
+# Never commit data or results, even if copied in here by mistake
+*.dat
+*.npy
+*.oebin
+*.mat
+*.png
+*.csv
+*.xlsx
+*.zip
+
+# OS clutter
+.DS_Store
+desktop.ini
