@@ -8,10 +8,14 @@ function info = find_oe_stream(rec_folder)
 %
 %   Looks in every "Record Node *" / experiment* / recording* folder for a
 %   structure.oebin, and keeps the continuous streams that come from the
-%   acquisition board. A stream counts as raw if its channel history goes
-%   straight from the source to the Record Node (one "->"). A Record Node
-%   placed after a Bandpass Filter etc. has a longer history and is
-%   skipped, because those processors change the saved data.
+%   acquisition board AND contain headstage channels (named CH1, CH2, ...).
+%   Newer Open Ephys versions also save a 1-channel 'memory_usage' stream
+%   from the board; it has no CH channels and is ignored.
+%
+%   A stream counts as raw if every processor between the source and the
+%   Record Node only passes data through unchanged (Merger, Splitter). A
+%   Record Node placed after a Bandpass Filter etc. is skipped, because
+%   those processors change the saved data.
 %
 %   Errors unless exactly one raw stream is found (e.g. two recordings in
 %   one session would be ambiguous: which one do the spreadsheet times
@@ -48,18 +52,28 @@ for n = 1:numel(nodes)
             % Acquisition board stream only (not e.g. a separate photometry device)
             if isempty(strfind(lower(st.folder_name), 'acquisition_board')), continue; end
 
-            % Channel list for this stream. The 'history' field lists the
-            % processors the signal went through before being saved, e.g.
-            %   raw:      'Acquisition Board -> Record Node'          (one '->')
-            %   filtered: 'Acquisition Board -> ... Bandpass Filter -> ... -> Record Node'
+            % Must contain headstage channels named CH<number> (skips the
+            % board's 'memory_usage' stream and any other non-EEG stream)
             ch = st.channels;
             if ~iscell(ch), ch = num2cell(ch); end
+            names = cellfun(@(x) x.channel_name, ch(:)', 'UniformOutput', false);
+            if ~any(~cellfun(@isempty, regexp(names, '^CH\d+$', 'once'))), continue; end
+
+            % The 'history' field lists the processors the signal went
+            % through before being saved, e.g.
+            %   raw:      'Acquisition Board -> Record Node'
+            %   raw:      'OE FPGA Acquisition Board -> Merger -> Record Node'
+            %   filtered: 'Acquisition Board -> ... Bandpass Filter -> ... -> Record Node'
+            % Drop the first entry (the source) and the last (this Record
+            % Node); whatever is left must be pass-through only.
             hist = ch{1}.history;
-            n_arrow = numel(strfind(hist, '->'));
+            steps = strtrim(strsplit(hist, '->'));
+            middle = steps(2:end-1);
+            is_raw = numel(steps) >= 2 && all(ismember(lower(middle), {'merger', 'splitter'}));
             desc = sprintf('%s (%s): %s', nodes(n).name, ...
                 strrep(oebin, [rec_folder filesep], ''), hist);
             % Not raw: note it (for the error message) and move on
-            if n_arrow ~= 1
+            if ~is_raw
                 skipped{end+1} = desc; %#ok<AGROW>
                 continue
             end
@@ -75,7 +89,7 @@ for n = 1:numel(nodes)
             info.n_chans       = st.num_channels;
             info.fs            = st.sample_rate;
             info.bit_volts     = cellfun(@(x) x.bit_volts, ch(:)');
-            info.channel_names = cellfun(@(x) x.channel_name, ch(:)', 'UniformOutput', false);
+            info.channel_names = names;
             info.oebin         = oebin;
             assert(numel(info.bit_volts) == info.n_chans, ...
                 'num_channels (%d) does not match channel list (%d) in %s', ...

@@ -6,7 +6,8 @@ function rows = read_cohort_sheet(xlsx_file)
 %   Columns are found by header text, so their order can change. Blank
 %   rows (no mouse ID) are dropped. Fields:
 %     sheet_row, project, cohort, mouse_id, rec_datenum, session, seizure,
-%     sudep, heat_start, ecog_ch (vector, e.g. [3 4]), emg_ch, sz_on, sz_off
+%     sudep, heat_start, ecog_ch (vector, e.g. [3 4]), emg_ch, sz_on, sz_off,
+%     sex ('' if no Sex column), age_days (NaN if no age column)
 %   Missing numbers are NaN.
 %
 %   The recording date may be stored as a number (20240227), as an Excel
@@ -25,6 +26,8 @@ col.mouse   = find_col(hdr, 'mouse id');
 col.date    = find_col(hdr, 'recording date', 'date');   % older sheets: 'date'
 col.session = find_col(hdr, 'heating session');
 col.heat    = find_col(hdr, 'heating start', '');         % optional
+col.sex     = find_col(hdr, 'sex', '');                   % optional
+col.age     = find_col(hdr, 'age (days)', '');            % optional
 col.seizure = find_col(hdr, 'seizure?');
 col.sudep   = find_col(hdr, 'sudep');
 col.ecog    = find_col(hdr, 'ecog');
@@ -39,7 +42,12 @@ rows = struct([]);
 for r = 2:size(C, 1)
     % Rows without a mouse ID are blank or notes: skip them
     id = to_num(C{r, col.mouse});
-    if isnan(id), continue; end
+    if isnan(id)
+        if ~is_blank(C{r, col.mouse})
+            warning('Row %d skipped: mouse ID "%s" is not a number', r, as_char(C{r, col.mouse}));
+        end
+        continue
+    end
     x = struct();
     x.sheet_row   = r;
     x.project     = cell2str(C{r, col.project});
@@ -51,6 +59,10 @@ for r = 2:size(C, 1)
     x.sudep       = cell2str(C{r, col.sudep});
     x.heat_start  = NaN;
     if ~isempty(col.heat), x.heat_start = to_num(C{r, col.heat}); end
+    x.sex = '';
+    if ~isempty(col.sex), x.sex = upper(cell2str(C{r, col.sex})); end
+    x.age_days = NaN;
+    if ~isempty(col.age), x.age_days = to_num(C{r, col.age}); end
     x.ecog_ch     = to_vec(C{r, col.ecog});
     x.emg_ch      = to_vec(C{r, col.emg});
     x.sz_on       = to_num(C{r, col.on});
@@ -98,7 +110,7 @@ function v = to_vec(x)
 % 9 -> 9; '[3,4]' -> [3 4]
 if is_blank(x), v = [];
 elseif isnumeric(x), v = double(x(:)');
-else, v = str2num(as_char(x)); %#ok<ST2NM>
+else, v = str2double(regexp(as_char(x), '\d+', 'match'));   % every whole number in the text
 end
 end
 
