@@ -15,6 +15,10 @@ function make_results_report(varargin)
 %
 % Options (name-value pairs)
 %   file_name     default 'results_report.html', written to <output>/
+%                 (Table 1 is also written to <output>/table1.csv)
+%                 Also writes <output>/cohort_by_row.xlsx (and .csv): the cohort
+%                 spreadsheet with columns saying how each row was used
+%                 (write_cohort_spreadsheet.m)
 %   reviewer      spike-marking reviewer for the detector validation
 %                 (default 'EC': spike_review/performance_EC.csv)
 %   embed_images  true (default): figures stored inside the HTML file, so
@@ -233,7 +237,10 @@ html = [html, {'<h2>Seizure duration, age, sex, seizure 1 vs 2 (Figure S5)</h2>'
     main_s / 60, n_text(R.rms.missing, main_s, {'DS seizure'})), ...
     table_html({'Measure', 'Factor', 'Test', 'Estimate', 'p'}, rows)}];
 
-%% 9. Write
+%% 9. The cohort spreadsheet: how each row was used (write_cohort_spreadsheet.m)
+write_cohort_spreadsheet(res, R.rms.pa, cfg);
+
+%% 10. Write
 html = [html, {'</body>', '</html>'}];
 out_file = fullfile(cfg.out_root, opts.file_name);
 fid = fopen(out_file, 'w', 'n', 'UTF-8');
@@ -270,18 +277,7 @@ for i = find(~in_final)
     r = res(mouse == mice(i));
     chosen = r([r.in_primary] == 1);
     if ~isempty(chosen)
-        msg = lower(chosen(1).message);
-        if ~isempty(strfind(msg, 'after the end'))
-            why{i} = 'the recording ended before the (pseudo-)seizure offset';
-        elseif ~isempty(strfind(msg, 'raw stream'))
-            why{i} = 'the recording folder held two data streams';
-        elseif ~isempty(strfind(msg, 'flat signal'))
-            why{i} = 'the signal was flat (all samples equal) in part of the recording';
-        elseif ~isempty(strfind(msg, 'baseline'))
-            why{i} = 'there was too little pre-heating baseline';
-        else
-            why{i} = 'the recording could not be processed';
-        end
+        why{i} = processing_reason(chosen(1).message);
     else
         reason = r(1).exclude_reason;
         if ~isempty(strfind(reason, 'SUDEP'))
@@ -328,7 +324,7 @@ with_depth = @(groups) sum([miss(ismember({miss.group}, groups)).n_with_depth]);
 
 p_cohort = sprintf(['The original cohort consisted of %d wild-type (WT) mice and %d DS mice, %d of whom had at ' ...
     'least one seizure, with %d heating sessions and %d seizures in total. %d mice were excluded: %s. The ' ...
-    'final cohort was %d mice (%d WT, %d DS without a seizure, %d DS with a seizure); the %d WT and DS ' ...
+    'final cohort was %d mice (%d WT, %d DS without a seizure, %d DS with a seizure; Table 1); the %d WT and DS ' ...
     'no-seizure mice together formed the control group. Within the final cohort, %d further heating ' ...
     'sessions were excluded from the primary analysis (%s), leaving one heating session per mouse. Median ' ...
     '(IQR) seizure duration was %s s, and median (IQR) pseudo-seizure duration in controls was %s s. A ' ...
@@ -343,7 +339,7 @@ if n_ended + n_art > 0
 else
     p_cohort = [p_cohort '.'];
 end
-html = [html, {'<h3>Cohort</h3>', ['<p>' p_cohort '</p>']}];
+html = [html, {'<h3>Cohort</h3>', ['<p>' p_cohort '</p>']}, cohort_table(res, final_rows, R, cfg)];
 
 % --- Spike detector -----------------------------------------------------------
 if isempty(perf)
@@ -570,6 +566,81 @@ p_clin = sprintf(['We examined the association between clinical variables and po
     'first %s min in DS seizure mice (exploratory, uncorrected; Figure S5). %s'], min_txt, strjoin(c_sent, ' '));
 html = [html, {'<h3>Association between clinical variables and post-ictal depth</h3>', ['<p>' p_clin '</p>']}];
 html = strrep(html, 'p = &lt;', 'p &lt;');           % 'p = < 0.001' -> 'p < 0.001'
+end
+
+function html = cohort_table(res, final_rows, R, cfg)
+% Table 1: the final cohort by group (DS seizure, controls, and the two
+% control subgroups). Mouse-level rows (sessions, seizures, SUDEP) count
+% every spreadsheet row of the cohort's mice, not only the analysed one.
+% Also written to <output>/table1.csv for pasting into Word.
+cols = {'DS seizure', {'DS seizure'}; 'Controls', {'WT', 'DS no seizure'}; ...
+        'Controls: WT', {'WT'}; 'Controls: DS no seizure', {'DS no seizure'}};
+main_s = cfg.depth_main_s;
+pa = R.rms.pa;                                    % per-animal depths and second seizure (RMS)
+labels = {};
+vals = {};
+for c = 1:size(cols, 1)
+    q = final_rows(ismember({final_rows.group}, cols{c, 2}));   % analysed recording of each mouse
+    mice = [q.mouse_id];
+    all_rows = res(ismember([res.mouse_id], mice));            % every heating session of these mice
+    n = numel(q);
+    sex = upper(strtrim({q.sex}));
+    n_f = sum(strcmp(sex, 'F')); n_m = sum(strcmp(sex, 'M')); n_unknown = n - n_f - n_m;
+    per_mouse = @(v) arrayfun(@(m) sum(v([all_rows.mouse_id] == m)), mice);
+    sessions = per_mouse(true(1, numel(all_rows)));
+    seizures = per_mouse(strcmp({all_rows.group}, 'DS seizure'));
+    sudep = per_mouse(strcmpi(strtrim({all_rows.sudep}), 'yes'));
+    in_pa = ismember([pa.sheet_row], [q.sheet_row]);
+    v = {};
+    v{end + 1} = sprintf('%d', n);
+    v{end + 1} = sprintf('%d (%.0f%%) / %d (%.0f%%)', n_f, 100 * n_f / n, n_m, 100 * n_m / n);
+    if n_unknown > 0, v{end} = sprintf('%s; %d not recorded', v{end}, n_unknown); end
+    v{end + 1} = sprintf('%d / %d', sum(strcmp({q.group}, 'WT')), sum(strncmp({q.group}, 'DS', 2)));
+    v{end + 1} = med_range([q.age_days], '%.0f');
+    v{end + 1} = med_range([q.sz_off] - [q.sz_on], '%.0f');
+    v{end + 1} = med_range([q.base_end_s] - [q.base_start_s], '%.0f');
+    v{end + 1} = sprintf('%d; %s', sum(sessions), med_range(sessions, '%.0f'));
+    v{end + 1} = sprintf('%d; %s', sum(seizures), med_range(seizures, '%.0f'));
+    v{end + 1} = sprintf('%d', sum(~isnan([pa(in_pa).s2_sheet_row])));
+    v{end + 1} = sprintf('%d', sum(sudep > 0));
+    v{end + 1} = sprintf('%d', sum(~isnan([pa(in_pa).(sprintf('depth_0_%ds', main_s))])));
+    vals(:, c) = v'; %#ok<AGROW>
+end
+labels = {'Mice, n'; 'Sex, female / male, n (%)'; 'Genotype, WT / DS, n'; ...
+    'Age at the analysed recording, days, median (range)'; ...
+    'Seizure (controls: pseudo-seizure) duration, s, median (range)'; ...
+    'Pre-heating baseline, s, median (range)'; ...
+    'Heating sessions, total; per mouse, median (range)'; ...
+    'Seizures, total; per mouse, median (range)'; ...
+    'Mice with a usable second seizure (paired comparison), n'; ...
+    'Mice with SUDEP in a later session, n'; ...
+    sprintf('Mice with a %g-min post-ictal depth, n', main_s / 60)};
+header = [{'Characteristic'}, cols(:, 1)'];
+excluded = res(~ismember([res.mouse_id], [final_rows.mouse_id]));      % rows of mice not in the cohort
+n_sudep_out = numel(unique([excluded(~cellfun(@isempty, strfind({excluded.exclude_reason}, 'SUDEP'))).mouse_id]));
+html = {'<h3>Table 1. Cohort characteristics</h3>', table_html(header, [labels vals]), ...
+    ['<p class="cap">One analysed recording per mouse (its first seizure, or for controls its first heating ' ...
+    'session). Heating sessions, seizures and SUDEP count every session of these mice. Controls'' ' ...
+    'pseudo-seizure times come from the spreadsheet. A usable second seizure: processed, with seizure ' ...
+    'times and not ending in SUDEP; the paired comparison uses those with a depth for both seizures. ' ...
+    sprintf('Not in the table: %d mice excluded because their first seizure ended in SUDEP.</p>', n_sudep_out)]};
+% CSV copy (cells quoted; entities turned back into plain characters)
+csv_file = fullfile(cfg.out_root, 'table1.csv');
+fid = fopen(csv_file, 'w');
+plain = @(x) strrep(strrep(x, '&ndash;', '-'), '"', '""');
+fprintf(fid, '%s\n', strjoin(cellfun(@(x) ['"' plain(x) '"'], header, 'UniformOutput', false), ','));
+for i = 1:numel(labels)
+    row = [labels(i), vals(i, :)];
+    fprintf(fid, '%s\n', strjoin(cellfun(@(x) ['"' plain(x) '"'], row, 'UniformOutput', false), ','));
+end
+fclose(fid);
+end
+
+function s = med_range(v, fmt)
+% 'median (min-max)'
+v = v(~isnan(v));
+if isempty(v), s = '&ndash;'; return; end
+s = sprintf([fmt ' (' fmt '&ndash;' fmt ')'], median(v), min(v), max(v));
 end
 
 function [mw, welch] = mw_row(stats, window_s, comparison)

@@ -85,7 +85,8 @@ analyze_primary('delta')
 analyze_primary('theta')
 make_figures                        % 3. every figure -> output/figures
 spike_detector_performance('EC')    % (only if the spike marking or detector changed)
-make_results_report                 % 4. output/results_report.html: Results text, figures, numbers
+make_results_report                 % 4. output/results_report.html: Results text, Table 1, figures, numbers;
+                                    %    output/table1.csv; output/cohort_by_row.xlsx (how each spreadsheet row was used)
 ```
 
 `run_postictal_batch` must be rerun whenever the spreadsheet, the seizure times, the exclusions or
@@ -123,6 +124,7 @@ set it with `make_figures('example_row', <spreadsheet row>)`.
 | Script | What it does |
 |---|---|
 | `make_results_report` | One HTML page: a draft of the Results text (cohort, spike detector, depth, time course, clinical variables) with every number filled in from the outputs, then every figure and the tables behind it (`'embed_images', false` to link the PNGs instead) |
+| `write_cohort_spreadsheet` | Run by `make_results_report`: a copy of the cohort spreadsheet with three columns added (analysis cohort; why the mouse was excluded; why the row was excluded from the primary analysis), as `output/cohort_by_row.xlsx` and `.csv` |
 | `inspect_recording(row)` | Check one recording's measurements: a 10 s ECoG page that is exactly one analysis window (spike detections circled) with that window's batch values and the recording's depths, above the whole recording's spectrogram, RMS, delta/theta and spike rate (arrows: scroll / gain; o f h b: jump; click a lower panel to jump) |
 | `view_recording(row)` | Scroll through one recording, 15 s at a time (arrows: scroll / gain; o/f: onset/offset; h: heating start) |
 | `review_spikes('EC')` | Blind marking of spikes on random 15 s baseline and post-ictal pages |
@@ -151,4 +153,5 @@ set it with `make_figures('example_row', <spreadsheet row>)`.
 | utils | `mann_whitney.m`, `spearman_test.m`, `signrank_test.m`, `tq95.m`, `avg_rank.m`, `tie_sum.m`, `nanmovmean.m` | Statistics |
 | | `quartile.m` | Quantile without the Statistics Toolbox (median and IQR in figures and report) |
 | | `group_center_ci.m`, `log_ticks.m`, `use_log_axis.m`, `p_stars.m`, `p_string.m`, `panel_letter.m`, `set_fonts.m`, `jitter_offsets.m`, `blue_white_red.m`, `artifact_spans.m` | Plotting helpers shared by the figure functions |
+| | `processing_reason.m` | Plain-language reason a recording failed in the batch (report, cohort spreadsheet) |
 | | `butter_filtfilt.m`, `write_results_csv.m`, `read_results_csv.m` | Filter (spike detector and RMS band-pass); struct array <-> CSV |
