@@ -5,11 +5,11 @@ function f = make_depth_figure(varargin)
 %
 %   make_depth_figure                                     % Figure 2
 %   make_depth_figure('compare', 'dsno_vs_wt', 'show_effect', true)       % S2
-%   make_depth_figure('measures', {'delta', 'theta'}, ...
-%       'names', {'Delta (1-4 Hz)', 'Theta (6-10 Hz)'}, 'show_effect', true)  % S3
+%   make_depth_figure('measures', {'delta', 'alpha'}, ...
+%       'names', {'Delta (1-4 Hz)', 'Theta (4-8 Hz)'}, 'show_effect', true)  % S3
 %
 % Options (name-value pairs)
-%   measures     measure names (measure_view.m); default rms, delta_theta,
+%   measures     measure names (measure_view.m); default cfg.primary_measures (rms, cfg.slowing,
 %                spike_rate
 %   names        panel titles; default Amplitude, Slowing, Spiking
 %   compare      'seizure_vs_controls' (default): Control (WT filled, DS no
@@ -44,7 +44,7 @@ function f = make_depth_figure(varargin)
 addpath(fileparts(fileparts(mfilename('fullpath')))); setup_paths();
 cfg = analysis_config();
 opts = struct();
-opts.measures    = {'rms', 'delta_theta', 'spike_rate'};
+opts.measures    = cfg.primary_measures;     % amplitude, slowing (cfg.slowing), spiking
 opts.names       = {'Amplitude', 'Slowing', 'Spiking'};
 opts.compare     = 'seizure_vs_controls';
 opts.window_s    = cfg.depth_main_s;
@@ -61,7 +61,7 @@ out_dir = fullfile(cfg.out_root, 'figures');
 if ~exist(out_dir, 'dir'), mkdir(out_dir); end
 depth_field = sprintf('depth_0_%ds', opts.window_s);           % column in pa
 stats_name  = sprintf('depth 0-%d s', opts.window_s);           % measure in stats
-grey = [0.45 0.45 0.45]; red = [0.80 0.20 0.20];
+C = group_colors();                                  % red = DS seizure, black / dark grey = controls
 
 % The two groups (x = 1 and x = 2): labels, the comparison's name in
 % stats.csv, and the colour of the second group
@@ -69,11 +69,11 @@ switch opts.compare
     case 'seizure_vs_controls'
         group_labels    = {'Control', 'DS seizure'};
         comparison_name = 'DS seizure vs controls';
-        col2 = red;
+        col2 = C.seizure;
     case 'dsno_vs_wt'
         group_labels    = {'WT', 'DS no seizure'};
         comparison_name = 'DS no seizure vs WT';
-        col2 = grey;
+        col2 = C.control;
     otherwise
         error('compare must be ''seizure_vs_controls'' or ''dsno_vs_wt''');
 end
@@ -97,30 +97,30 @@ for m = 1:n_panels
 
     ax = subplot(1, n_panels, m); hold on
 
-    % 2b. Dots (WT filled grey, DS no seizure open grey, DS seizure red)
+    % 2b. Dots (WT filled dark grey, DS no seizure open, DS seizure red)
     if strcmp(opts.compare, 'seizure_vs_controls')
         vals1 = depth(is_wt | is_dsno);               % x = 1: all controls
         vals2 = depth(is_seizure);                    % x = 2
         ctrl_is_wt = is_wt(is_wt | is_dsno);          % which controls are WT
         x1 = 1 + jitter_offsets(numel(vals1));
-        h_wt   = plot(x1(ctrl_is_wt), vals1(ctrl_is_wt), 'o', 'MarkerFaceColor', grey + (1 - grey) * 0.3, ...
+        h_wt   = plot(x1(ctrl_is_wt), vals1(ctrl_is_wt), 'o', 'MarkerFaceColor', C.control_dots, ...
             'MarkerEdgeColor', 'none', 'MarkerSize', 8);
         h_dsno = plot(x1(~ctrl_is_wt), vals1(~ctrl_is_wt), 'o', 'MarkerFaceColor', 'w', ...
-            'MarkerEdgeColor', grey, 'MarkerSize', 8, 'LineWidth', 1.2);
-        plot(2 + jitter_offsets(numel(vals2)), vals2, 'o', 'MarkerFaceColor', red + (1 - red) * 0.4, ...
+            'MarkerEdgeColor', C.control_dots, 'MarkerSize', 8, 'LineWidth', 1.2);
+        plot(2 + jitter_offsets(numel(vals2)), vals2, 'o', 'MarkerFaceColor', C.seizure_dots, ...
             'MarkerEdgeColor', 'none', 'MarkerSize', 8);
     else
         vals1 = depth(is_wt);
         vals2 = depth(is_dsno);
-        plot(1 + jitter_offsets(numel(vals1)), vals1, 'o', 'MarkerFaceColor', grey + (1 - grey) * 0.3, ...
+        plot(1 + jitter_offsets(numel(vals1)), vals1, 'o', 'MarkerFaceColor', C.control_dots, ...
             'MarkerEdgeColor', 'none', 'MarkerSize', 8);
-        plot(2 + jitter_offsets(numel(vals2)), vals2, 'o', 'MarkerFaceColor', 'w', 'MarkerEdgeColor', grey, ...
+        plot(2 + jitter_offsets(numel(vals2)), vals2, 'o', 'MarkerFaceColor', 'w', 'MarkerEdgeColor', C.control_dots, ...
             'MarkerSize', 8, 'LineWidth', 1.2);
     end
 
     % 2c. Group centre (horizontal bar) and 95% CI (vertical line); dotted
     %     line = baseline (1 for ratios, 0 for spike rate)
-    vals = {vals1, vals2}; colors = {grey, col2};
+    vals = {vals1, vals2}; colors = {C.control, col2};
     for k = 1:2
         [center, ci] = group_center_ci(vals{k}, M.is_log);
         plot(k + [-0.25 0.25], [center center], '-', 'Color', colors{k}, 'LineWidth', 3.5);

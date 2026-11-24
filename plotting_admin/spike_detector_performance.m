@@ -26,6 +26,13 @@ function P = spike_detector_performance(reviewer, varargin)
 %      replacement; spikes within a mouse are not independent).
 %   Also reported: the chosen thresholds' performance on all mice
 %   together (optimistic, because half were used to choose them).
+%   4. Baseline vs post-ictal accuracy (is the detector biased after
+%      seizures?): all mice, chosen thresholds; sensitivity and PPV pooled
+%      over each condition's pages, and the difference post - baseline with
+%      a 95% CI from n_boot resamples of the mice (both of a mouse's pages
+%      are resampled together, so the pairing is kept). All mice, not only
+%      the test half: this compares the two conditions rather than
+%      estimating accuracy, and baseline spikes are rare.
 %
 %   sensitivity = TP / (TP + FN)     PPV = TP / (TP + FP)
 %   F1 = 2 TP / (2 TP + FP + FN)
@@ -35,11 +42,13 @@ function P = spike_detector_performance(reviewer, varargin)
 %   performance_<reviewer>.csv         test half: chosen and current
 %                                      thresholds, by stratum, with CIs
 %   performance_<reviewer>.png         F1 on the tuning half
+%   performance_<reviewer>_by_condition.csv   step 4: baseline, post, and
+%                                      the difference with its 95% CI
 % P: struct with the chosen thresholds, the grid and the test results.
 addpath(fileparts(fileparts(mfilename('fullpath')))); setup_paths();   % scripts folder and its subfolders
 cfg = analysis_config();
 opt = struct('tmul', [8 10 12 14 16 19 22 25], 'absthresh', [50 100 150 200 300], 'tol_s', 0.05, ...
-    'split_seed', 2, 'n_boot', 2000);
+    'split_seed', 2, 'n_boot', 2000, 'condition_seed', 3);
 for k = 1:2:numel(varargin), opt.(lower(varargin{k})) = varargin{k+1}; end
 out_dir = fullfile(cfg.shared_root, 'spike_review');
 L = load(fullfile(out_dir, sprintf('spikes_%s.mat', reviewer)), 'R'); R = L.R;
@@ -125,6 +134,46 @@ fprintf('\nChosen thresholds, all mice (optimistic): sensitivity %.2f, PPV %.2f,
 fprintf('To use them: set tmul = %g and absthresh = %g in cfg.spikes (analysis_config.m) and rerun run_postictal_batch.\n', ...
     best.tmul, best.absthresh);
 
+%% 4. Baseline vs post-ictal accuracy, all mice, chosen thresholds
+% Counts per mouse and condition (c from above: chosen thresholds, all
+% pages); pooled sensitivity and PPV per condition; bootstrap over mice
+% for the difference post - baseline
+conds = {'baseline', 'post'};
+cm = zeros(numel(um), 3, 2);                         % mouse x [TP FP FN] x condition
+for i = 1:numel(um)
+    for s = 1:2
+        cm(i, :, s) = sum(c(mouse == um(i) & strcmp(seg, conds{s}), :), 1);
+    end
+end
+est = zeros(2, 2);                                   % [sensitivity PPV] x condition
+for s = 1:2
+    q = summarize(sum(cm(:, :, s), 1));
+    est(:, s) = [q.sensitivity; q.ppv];
+end
+rng(opt.condition_seed);
+d_boot = nan(opt.n_boot, 2);
+for b = 1:opt.n_boot
+    pick = randi(numel(um), numel(um), 1);           % the same mice for both conditions
+    qb = summarize(sum(cm(pick, :, 1), 1)); qp = summarize(sum(cm(pick, :, 2), 1));
+    d_boot(b, :) = [qp.sensitivity - qb.sensitivity, qp.ppv - qb.ppv];
+end
+names = {'sensitivity', 'ppv'};
+C = struct([]);
+fprintf('\nBaseline vs post-ictal pages, all %d mice, chosen thresholds (95%% CI, bootstrap over mice):\n', numel(um));
+for k = 1:2
+    x = sort(d_boot(~isnan(d_boot(:, k)), k));
+    ci = x(max(1, round([0.025 0.975] * numel(x))));
+    tb = sum(cm(:, :, 1), 1); tp = sum(cm(:, :, 2), 1);
+    row = struct('measure', names{k}, 'n_mice', numel(um), 'baseline', est(k, 1), 'post', est(k, 2), ...
+        'difference', est(k, 2) - est(k, 1), 'diff_ci_low', ci(1), 'diff_ci_high', ci(2), ...
+        'baseline_tp', tb(1), 'baseline_fp', tb(2), 'baseline_fn', tb(3), ...
+        'post_tp', tp(1), 'post_fp', tp(2), 'post_fn', tp(3));
+    if isempty(C), C = row; else, C(end+1) = row; end %#ok<AGROW>
+    fprintf('  %-12s baseline %.2f, post %.2f, difference %+.2f [%.2f, %.2f]\n', names{k}, est(k, 1), est(k, 2), ...
+        est(k, 2) - est(k, 1), ci(1), ci(2));
+end
+write_results_csv(C, fullfile(out_dir, sprintf('performance_%s_by_condition.csv', reviewer)));
+
 %% F1 map (tuning half)
 M = nan(numel(opt.absthresh), numel(opt.tmul));
 for i = 1:numel(G), M(opt.absthresh == G(i).absthresh, opt.tmul == G(i).tmul) = G(i).f1; end
@@ -141,7 +190,7 @@ for i = 1:size(M, 1)
 end
 print(fig, fullfile(out_dir, sprintf('performance_%s.png', reviewer)), '-dpng', '-r120');
 
-P = struct('best', best, 'grid', G, 'test', T, 'tune_mice', tune_m, 'opt', opt);
+P = struct('best', best, 'grid', G, 'test', T, 'by_condition', C, 'tune_mice', tune_m, 'opt', opt);
 end
 
 %% ------------------------------------------------------------------------

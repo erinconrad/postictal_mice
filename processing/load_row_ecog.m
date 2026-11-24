@@ -1,6 +1,6 @@
 function L = load_row_ecog(x, data_root, ecog_multi, notch)
 % LOAD_ROW_ECOG  Find and load the ECoG signal for one spreadsheet row.
-% Shared by run_postictal_batch.m and run_spectrogram_batch.m.
+% Used by run_postictal_batch.m and the figure and viewer functions.
 %
 %   L = load_row_ecog(x, data_root, ecog_multi)
 %   L = load_row_ecog(x, data_root, ecog_multi, notch)
@@ -48,8 +48,13 @@ end
 try
 %% 2. Find the session folder and the raw stream inside it
 [L.folder, L.note] = find_recording_folder(data_root, x.cohort, x.rec_datenum, x.mouse_id);
-info = find_oe_stream(L.folder);
+which = NaN;                                      % stream choice (cfg.stream_choice, prepare_rows.m)
+if isfield(x, 'stream'), which = x.stream; end
+info = find_oe_stream(L.folder, which);
 L.record_node = info.record_node;
+if ~isnan(which)
+    L.note = strtrim(sprintf('%s raw stream %d of %d used (cfg.stream_choice)', L.note, which, info.n_streams));
+end
 L.fs = info.fs;
 
 %% 3. Which channel(s) to load

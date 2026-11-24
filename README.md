@@ -2,7 +2,7 @@
 
 MATLAB code for hyperthermia-induced seizures recorded with Open Ephys. It measures how the
 ECoG after a seizure differs from the animal's own pre-heating baseline: in amplitude (RMS),
-in slowing (delta/theta power) and in spike rate. DS mice with a seizure are compared with
+in slowing (delta/alpha power ratio) and in spike rate. DS mice with a seizure are compared with
 controls (WT and DS mice without a seizure). No toolboxes are needed; MATLAB R2019a or later.
 
 ## Folder layout
@@ -47,7 +47,10 @@ is not tracked by git.
   seizure ended in SUDEP is left out. Mice are matched by ID alone (4616 and 4704 appear under two project
   names). The seizure 1 vs 2 comparison pairs the first seizure with the mouse's next one.
 - **session_corrections**: session numbers corrected from the spreadsheet (mouse 2575, June 4: session 2).
-- **baseline**: the 5 min before heating starts (at least 60 s if heating started earlier).
+- **stream_choice**: which raw stream to use when a session folder holds more than one (mouse 2435,
+  April 17: the second). Without an entry, two raw streams in one folder is an error.
+- **baseline**: the 5 min before heating starts (at least 60 s if heating started earlier), with at
+  least 10 artifact-free 10 s windows.
 - **depth windows**: `depth_windows_s = [60 120 300]` (all computed); `depth_main_s = 300` is
   the one used in Figures 2 and 5 and the supplements.
 - **primary_measures**: RMS, delta/theta and spike rate. DS seizure vs controls at 0-5 min for
@@ -55,7 +58,9 @@ is not tracked by git.
   (x 3). Every other test is secondary and uncorrected.
 - **notch**: 60/120/180 Hz notch on every recording when it is loaded.
 - **rms_band**: RMS on the ECoG band-passed to 1-30 Hz (`[]` = broadband).
-- **bands**: delta 1-4, theta 6-10 Hz (slowing = delta/theta); alpha, beta, gamma also stored.
+- **bands**: canonical bands, delta 1-4, theta 4-8, alpha 8-13, beta 13-30, gamma 30-55 Hz.
+- **slowing**: the delta/alpha power ratio (`cfg.slowing = 'delta_alpha'`; any band ratio, e.g. `'delta_theta'`). Figures, tests and text follow it.
+- **excluded_projects**: projects dropped entirely when the spreadsheet is read (PPN GCaMP).
 - **spikes**: spike detector settings (`detect_spikes.m`), tuned with `review_spikes`.
 - **artifact_uV**: a 10 s window with any sample beyond 3000 uV is left out. A window whose signal is flat (all
   samples equal) stops the recording with an error instead, so it shows up as not analysed.
@@ -79,17 +84,19 @@ windows are artifact-free. Figure 3's 30 s bins use the same function.
 run_postictal_batch                 % 1. every recording -> output/postictal_batch
                                     %    (or refresh_selection: re-apply the cohort selection only, in seconds)
 analyze_primary                     % 2. depth and group tests, one call per measure
-analyze_primary('delta_theta')
+analyze_primary('delta_alpha')
 analyze_primary('spike_rate')
 analyze_primary('delta')
-analyze_primary('theta')
+analyze_primary('alpha')
 make_figures                        % 3. every figure -> output/figures
 spike_detector_performance('EC')    % (only if the spike marking or detector changed)
 make_results_report                 % 4. output/results_report.html: Results text, Table 1, figures, numbers;
                                     %    output/table1.csv; output/cohort_by_row.xlsx (how each spreadsheet row was used)
 ```
 
-`run_postictal_batch` must be rerun whenever the spreadsheet, the seizure times, the exclusions or
+`run_postictal_batch` first checks that every spreadsheet recording has a folder in the data
+folder and warns, listing the missing ones, before the long run; at the end it lists every
+recording that was not analysed and why. `run_postictal_batch` must be rerun whenever the spreadsheet, the seizure times, the exclusions or
 the processing settings change. `analyze_primary` writes, per measure (`output/primary_analysis`
 for RMS, `output/primary_analysis_<measure>` otherwise): `per_animal.csv` (depth at 1, 2 and 5
 min; session-2 depth for DS seizure mice), `group_summary.csv`, `stats.csv` (DS seizure vs
@@ -101,13 +108,13 @@ controls and DS no seizure vs WT, Mann-Whitney and Welch with effect size and 95
 
 | File | Content | Function |
 |---|---|---|
-| `figure1` | Example seizure: A raw ECoG (100 s before onset to 150 s after offset, spikes outside the seizure); B spectrogram relative to baseline with the delta and theta bands marked; C-E RMS, delta/theta and spike rate over the recording | `make_figures` |
+| `figure1` | Two example seizures, one column each (mice 3697 and 1779), shared y axes: raw ECoG 2 min before to 5 min after onset with detected spikes; spectrogram relative to baseline with the delta and theta bands marked; RMS, delta/theta and spike rate over time | `make_figures` |
 | `figure2` | Depth 0-5 min, Control vs DS seizure; Bonferroni-corrected Mann-Whitney as asterisks | `make_depth_figure` |
 | `figure3` | 30 s bins, 4 min before onset to 10 min after offset, median and IQR | `make_bin_figure` |
 | `figureS1_spike_examples` | Raw ECoG, 60–75 s after offset, 10 random DS seizure mice, with every spike detection | `make_spike_examples_figure` |
 | `figureS2_control_groups` | As Figure 2, WT vs DS no seizure, with effect sizes | `make_depth_figure` |
-| `figureS3_delta_theta` | As Figure 2, delta and theta separately, with effect sizes | `make_depth_figure` |
-| `figureS4_delta_theta_bins` | As Figure 3, delta and theta separately | `make_bin_figure` |
+| `figureS3_slowing_bands` | As Figure 2, delta and alpha (the slowing ratio's bands) separately, with effect sizes | `make_depth_figure` |
+| `figureS4_band_bins` | As Figure 3, absolute power in each band (delta, theta, alpha, beta, gamma; `cfg.bands`) relative to baseline | `make_bin_figure` |
 | `figureS5_clinical` | DS seizure mice, depth 0-5 min vs seizure duration and age (Spearman), sex (Mann-Whitney), seizure 1 vs 2 (paired, Wilcoxon signed-rank); 3 measures x 4 factors | `make_covariate_figure` |
 
 Asterisks: * p < 0.05, ** p < 0.01, *** p < 0.001, n.s. otherwise; exact p-values are printed
@@ -115,9 +122,10 @@ and are in the CSV files. Time axes are in minutes. Each figure function can als
 its own with options (see the header of each file), e.g.
 `make_depth_figure('window_s', 60, 'file_name', 'figure2_0-1min')`.
 
-The example seizure in Figure 1 is chosen automatically (a DS seizure no longer than the median,
-with at least 10 min recorded after offset, whose RMS depth is closest to the group median), or
-set it with `make_figures('example_row', <spreadsheet row>)`.
+The example seizures in Figure 1 are set by `opts.example_mouse` in `make_figures.m` (default
+`[3697 1779]`; any number of columns), or `make_figures('example_row', [52 7])`.
+`make_figures('example_mouse', NaN)` picks one typical seizure automatically (a DS seizure no
+longer than the median, at least 10 min recorded after offset, RMS depth closest to the group median).
 
 ## Other tools
 
@@ -153,5 +161,6 @@ set it with `make_figures('example_row', <spreadsheet row>)`.
 | utils | `mann_whitney.m`, `spearman_test.m`, `signrank_test.m`, `tq95.m`, `avg_rank.m`, `tie_sum.m`, `nanmovmean.m` | Statistics |
 | | `quartile.m` | Quantile without the Statistics Toolbox (median and IQR in figures and report) |
 | | `group_center_ci.m`, `log_ticks.m`, `use_log_axis.m`, `p_stars.m`, `p_string.m`, `panel_letter.m`, `set_fonts.m`, `jitter_offsets.m`, `blue_white_red.m`, `artifact_spans.m` | Plotting helpers shared by the figure functions |
+| | `group_colors.m` | Group colours for every figure: red = DS seizure, black / dark grey = controls |
 | | `processing_reason.m` | Plain-language reason a recording failed in the batch (report, cohort spreadsheet) |
 | | `butter_filtfilt.m`, `write_results_csv.m`, `read_results_csv.m` | Filter (spike detector and RMS band-pass); struct array <-> CSV |

@@ -12,7 +12,7 @@ elseif ~isempty(strfind(msg, 'raw stream'))
 elseif ~isempty(strfind(msg, 'flat signal'))
     s = 'the signal was flat (all samples equal) in part of the recording';
 elseif ~isempty(strfind(msg, 'baseline'))
-    s = 'there was too little pre-heating baseline';
+    s = 'there was too little artifact-free pre-heating baseline';
 else
     s = 'the recording could not be processed';
 end

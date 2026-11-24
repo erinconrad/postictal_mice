@@ -1,10 +1,15 @@
-function info = find_oe_stream(rec_folder)
+function info = find_oe_stream(rec_folder, which)
 % FIND_OE_STREAM  Locate the raw (unfiltered) acquisition-board recording
 % inside an Open Ephys session folder.
 %
 %   info = find_oe_stream(rec_folder)
+%   info = find_oe_stream(rec_folder, which)
 %
 %   rec_folder : session folder, e.g. .../DS_seizure/2024-02-27_11-53-07_1779
+%   which      : optional; when the folder holds several raw streams, use
+%                the which-th (folder order: Record Node, experiment,
+%                recording1, recording2, ...; cfg.stream_choice). NaN or
+%                omitted = there must be exactly one.
 %
 %   Looks in every "Record Node *" / experiment* / recording* folder for a
 %   structure.oebin, and keeps the continuous streams that come from the
@@ -19,7 +24,7 @@ function info = find_oe_stream(rec_folder)
 %
 %   Errors unless exactly one raw stream is found (e.g. two recordings in
 %   one session would be ambiguous: which one do the spreadsheet times
-%   refer to?).
+%   refer to?), or 'which' picks one of them.
 %
 %   info fields: dat_file, record_node, n_chans, fs, bit_volts (1 x n_chans),
 %                channel_names (cellstr), oebin
@@ -99,8 +104,13 @@ for n = 1:numel(nodes)
     end
 end
 
-%% Return the one raw stream, or explain why there isn't exactly one
-if numel(found) == 1
+%% Return the one raw stream (or the chosen one), or explain why not
+if nargin >= 2 && ~isnan(which)
+    assert(which >= 1 && which <= numel(found), 'Stream %d requested, but %s has %d raw stream(s)', ...
+        which, rec_folder, numel(found));
+    info = found{which};
+    info.n_streams = numel(found);
+elseif numel(found) == 1
     info = found{1};
 elseif isempty(found)
     error('No raw acquisition-board stream in %s. Non-raw streams seen:\n  %s', ...

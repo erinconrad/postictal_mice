@@ -6,10 +6,11 @@ function analyze_primary(measure)
 % the figure scripts read this function's output.
 %
 %   analyze_primary                  RMS (amplitude; post-ictal suppression)
-%   analyze_primary('delta_theta')   delta/theta power ratio (slowing)
+%   analyze_primary('delta_alpha')   delta/alpha power ratio (slowing, cfg.slowing)
 %   analyze_primary('spike_rate')    spike rate
-%   analyze_primary('delta')         delta power (1-4 Hz)
-%   analyze_primary('theta')         theta power (6-10 Hz)
+%   analyze_primary('delta')         delta power (cfg.bands)
+%   analyze_primary('alpha')         alpha power (cfg.bands)
+%   analyze_primary('delta_theta'), analyze_primary('theta')   optional, secondary
 %
 % Depth (depth_window.m): the measure relative to the animal's own
 % pre-heating baseline, averaged over the 10 s windows (every 5 s) that lie

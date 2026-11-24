@@ -105,6 +105,27 @@ rows = prepare_rows(cfg);
 if ~isempty(cfg.rows_to_run), rows = rows(ismember([rows.sheet_row], cfg.rows_to_run)); end
 fprintf('%d recordings in spreadsheet\n', numel(rows));
 
+%% 2b. Check that every recording's folder exists, before the long run
+% (find_recording_folder.m: the cohort subfolder, a folder with the
+% recording's date and mouse ID). Missing ones are listed now and again
+% at the end; the run goes on without them.
+missing = {};
+for i = 1:numel(rows)
+    x = rows(i);
+    try
+        find_recording_folder(cfg.data_root, x.cohort, x.rec_datenum, x.mouse_id);
+    catch err
+        missing{end + 1} = sprintf('  row %3d  mouse %-5d %s  %-14s %s', x.sheet_row, x.mouse_id, ...
+            datestr(x.rec_datenum, 'yyyy-mm-dd'), x.cohort, strtok(err.message, sprintf('\n'))); %#ok<AGROW>
+    end
+end
+if isempty(missing)
+    fprintf('All %d recording folders found.\n', numel(rows));
+else
+    warning('postictal:missingRecordings', '%d of %d recordings have no folder in %s:\n%s', ...
+        numel(missing), numel(rows), cfg.data_root, strjoin(missing, '\n'));
+end
+
 % Make the output folder (and figures subfolder). Figures are drawn
 % invisibly so this also works on a server with no display.
 if cfg.save_figs
@@ -261,6 +282,16 @@ for k = 1:size(cfg.groups, 1)
     fprintf('  %-15s %d\n', cfg.groups{k, 2}, sum(ok_p & strcmp({res.group}, cfg.groups{k, 2})));
 end
 fprintf('Results written to %s\n', cfg.out_dir);
+
+% Every recording that was not analysed, and why (folder missing, two raw
+% streams, offset after the end of the recording, ...)
+not_ok = find(~strcmp({res.status}, 'ok'));
+if ~isempty(not_ok)
+    lines = arrayfun(@(k) sprintf('  row %3d  mouse %-5d %-14s %-8s %s', res(k).sheet_row, res(k).mouse_id, ...
+        res(k).group, res(k).status, res(k).message), not_ok, 'UniformOutput', false);
+    warning('postictal:notAnalysed', '%d of %d recordings were not analysed (%d of them in the primary cohort):\n%s', ...
+        numel(not_ok), numel(res), sum([res(not_ok).in_primary] == 1), strjoin(lines, '\n'));
+end
 
 % Restore figure visibility so later figures in this MATLAB session show
 if cfg.save_figs, set(0, 'DefaultFigureVisible', old_vis); end

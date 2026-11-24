@@ -46,9 +46,9 @@ if ~exist(out_dir, 'dir'), mkdir(out_dir); end
 depth_field    = sprintf('depth_0_%ds', opts.window_s);         % session 1 (primary)
 depth_field_s2 = sprintf('s2_depth_0_%ds', opts.window_s);      % second seizure, same mice
 
-measures = {'rms', 'delta_theta', 'spike_rate'};
+measures = cfg.primary_measures;                 % amplitude, slowing (cfg.slowing), spiking
 names    = {'Amplitude', 'Slowing', 'Spiking'};
-red = [0.80 0.20 0.20]; light_red = red + (1 - red) * 0.4;
+C = group_colors(); red = C.seizure; light_red = C.seizure_dots;   % DS seizure mice only
 window_label = sprintf('0-%g min', opts.window_s / 60);
 
 %% 2. One row of panels per measure

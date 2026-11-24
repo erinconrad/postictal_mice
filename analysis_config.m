@@ -50,15 +50,19 @@ cfg.depth_main_s    = 300;
 % p-values are Bonferroni-corrected for the number of measures listed
 % (stats.csv column p_bonferroni; Figure 2's asterisks use it). Every other
 % test is secondary and is reported uncorrected (p_bonferroni = NaN).
-cfg.primary_measures = {'rms', 'delta_theta', 'spike_rate'};
+% Slowing = the delta/alpha power ratio (DAR), the standard human slowing
+% index (JM/EC, Nov 24; previously delta/theta). Any '<band>_<band>' ratio
+% works here, e.g. 'delta_theta'; every figure and text follows it.
+cfg.slowing = 'delta_alpha';
+cfg.primary_measures = {'rms', cfg.slowing, 'spike_rate'};
 
 %% Frequency bands (band power per 10 s window, window_amplitude.m)
-% Name, [low high) in Hz. Slowing = delta/theta: mouse waking ECoG is
-% dominated by theta (hippocampal, with movement), not a posterior alpha
-% rhythm. Delta starts at 1 Hz: the 0.5 Hz bins of a 2 s spectrum pick up
-% slow drift. Gamma stops below the 60 Hz notch. delta and theta are
-% required; the others are stored for later.
-cfg.bands = {'delta', [1 4]; 'theta', [6 10]; 'alpha', [8 13]; 'beta', [13 30]; 'gamma', [30 55]};
+% Name, [low high) in Hz: the canonical (human) bands, non-overlapping
+% (JM, Nov 24; previously theta 6-10 Hz). Slowing: cfg.slowing. Delta
+% starts at 1 Hz, not 0.5: with 2 s segments the 0.5 Hz bin is a single
+% cycle per segment and picks up slow drift. Gamma stops below the 60 Hz
+% notch. delta and theta are required; all five are in Figure S4.
+cfg.bands = {'delta', [1 4]; 'theta', [4 8]; 'alpha', [8 13]; 'beta', [13 30]; 'gamma', [30 55]};
 
 % Band-pass for the RMS amplitude (Hz; window_amplitude.m). 1-30 Hz keeps
 % the bands analysed and removes most movement and muscle activity, which
@@ -110,6 +114,22 @@ cfg.excluded_seizures = {
 % (yyyymmdd), heating session to use instead
 cfg.session_corrections = {
     2575, 20240604, 2      % listed as session 1; a second heating 4 days after the first (JM, Nov 19)
+    };
+
+%% Which raw stream to use when a session folder holds more than one:
+% mouse ID, recording date (yyyymmdd), stream number. Streams are numbered
+% in folder order (Record Node, then experiment, then recording1,
+% recording2, ...). Without an entry, a folder with two raw streams is an
+% error (which one do the spreadsheet times refer to?).
+% Projects left out entirely (spreadsheet "Project name"): their rows are
+% dropped when the spreadsheet is read (prepare_rows.m), so they are not
+% processed, not counted and not in any analysis.
+cfg.excluded_projects = {
+    'PPN GCaMP'            % technical problem with the recordings (JM, Nov 24)
+    };
+
+cfg.stream_choice = {
+    2435, 20240417, 2      % two recordings in the folder; use the second (JM, Nov 20)
     };
 
 %% Primary cohort: one recording per mouse (prepare_rows.m; other rows are

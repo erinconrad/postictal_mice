@@ -29,8 +29,8 @@ function make_results_report(varargin)
 % Reads, from <output>/:
 %   postictal_batch/postictal_results.mat     cohort counts, failed recordings
 %   primary_analysis*/primary_analysis.mat    group summaries and tests (5 measures)
-%   figures/figure1_example.csv               the example seizure
-%   figures/figure3_summary.csv, figures/figureS4_delta_theta_bins_summary.csv
+%   figures/figure1_example.csv               the example seizures (one row each)
+%   figures/figure3_summary.csv, figures/figureS4_band_bins_summary.csv
 %   figures/figureS1_spike_examples.csv, figures/figureS5_clinical_stats.csv
 %   spike_review/performance_<reviewer>.csv   spike detector, test half
 %   figures/*.png
@@ -48,10 +48,35 @@ windows_s = cfg.depth_windows_s;                     % 60 120 300
 main_s    = cfg.depth_main_s;                        % 300
 
 % Results per measure (analyze_primary.m): R.(measure) has pa, gs, stats, M
-measures = {'rms', 'delta_theta', 'spike_rate', 'delta', 'theta'};
-names = {'Amplitude (RMS / baseline)', 'Slowing (&delta;/&theta; / baseline)', ...
-    'Spiking (spikes/min &minus; baseline)', 'Delta power (1&ndash;4 Hz) / baseline', ...
-    'Theta power (6&ndash;10 Hz) / baseline'};
+% The primary measures (amplitude, slowing = cfg.slowing, spiking), then the
+% slowing ratio's two bands separately (Figure S3). Delta/theta and theta
+% are added to the tables as a secondary reference if they were analysed.
+slow_bands = strsplit(cfg.slowing, '_');             % e.g. delta, alpha
+measures = [cfg.primary_measures, slow_bands];
+for extra = {'delta_theta', 'theta'}
+    [~, M] = measure_view([], extra{1});
+    if ~ismember(extra{1}, measures) && exist(fullfile(cfg.out_root, M.out_dir, 'primary_analysis.mat'), 'file') == 2
+        measures{end + 1} = extra{1}; %#ok<AGROW>
+    end
+end
+band_txt = @(b) sprintf('%g&ndash;%g Hz', cfg.bands{strcmp(cfg.bands(:, 1), b), 2});   % from cfg.bands
+greek = @(b) ['&' b ';'];                            % 'alpha' -> '&alpha;'
+ratio_html = @(m) strjoin(cellfun(greek, strsplit(m, '_'), 'UniformOutput', false), '/');   % '&delta;/&alpha;'
+names = cell(size(measures));
+for m = 1:numel(measures)
+    switch measures{m}
+        case 'rms',        names{m} = 'Amplitude (RMS / baseline)';
+        case 'spike_rate', names{m} = 'Spiking (spikes/min &minus; baseline)';
+        case cfg.slowing,  names{m} = ['Slowing (' ratio_html(measures{m}) ' / baseline)'];
+        otherwise
+            if any(measures{m} == '_')               % another ratio (secondary)
+                names{m} = [ratio_html(measures{m}) ' / baseline (secondary)'];
+            else
+                names{m} = sprintf('%s power (%s) / baseline', [upper(measures{m}(1)) measures{m}(2:end)], ...
+                    band_txt(measures{m}));
+            end
+    end
+end
 R = struct();
 for m = 1:numel(measures)
     [~, M] = measure_view([], measures{m});
@@ -63,11 +88,13 @@ B = load(fullfile(cfg.out_root, 'postictal_batch', 'postictal_results.mat'), 're
 res = B.res;
 example = read_results_csv(fullfile(fig_dir, 'figure1_example.csv'));
 Q3 = read_results_csv(fullfile(fig_dir, 'figure3_summary.csv'));                 % Figure 3 bins
-Q4 = read_results_csv(fullfile(fig_dir, 'figureS4_delta_theta_bins_summary.csv')); % delta, theta bins
+Q4 = read_results_csv(fullfile(fig_dir, 'figureS4_band_bins_summary.csv')); % frequency-band bins
 T5 = read_results_csv(fullfile(fig_dir, 'figureS5_clinical_stats.csv'));          % clinical variables
 spike_file = fullfile(fig_dir, 'figureS1_spike_examples.csv');
 perf_file  = fullfile(cfg.shared_root, 'spike_review', sprintf('performance_%s.csv', opts.reviewer));
 if exist(perf_file, 'file'), perf = read_results_csv(perf_file); else, perf = []; end
+cond_file = strrep(perf_file, '.csv', '_by_condition.csv');    % baseline vs post-ictal accuracy
+if exist(cond_file, 'file'), perf_cond = read_results_csv(cond_file); else, perf_cond = []; end
 
 % html = the page, one cell per line
 html = {'<!doctype html>', '<html lang="en">', '<head>', '<meta charset="utf-8">', ...
@@ -78,7 +105,7 @@ html = {'<!doctype html>', '<html lang="en">', '<head>', '<meta charset="utf-8">
     datestr(now, 'yyyy-mm-dd HH:MM'), esc(cfg.out_root))};
 
 %% 1b. Draft Results text (results_text, below)
-html = [html, results_text(res, R, Q3, Q4, T5, perf, example, cfg)];
+html = [html, results_text(res, R, Q3, Q4, T5, perf, perf_cond, example, cfg)];
 
 %% 2. Cohort
 in_cohort = [res.in_primary] == 1;
@@ -104,8 +131,9 @@ html = [html, {'<h2>Cohort</h2>', ...
 base_len = [res(analysed).base_end_s] - [res(analysed).base_start_s];
 failed_baseline = in_cohort & ~analysed & ~cellfun(@isempty, strfind({res.message}, 'baseline'));
 html = [html, {sprintf(['<p>Pre-heating baseline: median %.0f s (range %.0f&ndash;%.0f s); %d of %d ' ...
-    'recordings had less than %g s of recording before heating and used all of it (at least %g s was ' ...
-    'required; %d recording(s) excluded for too little baseline).</p>'], median(base_len), min(base_len), ...
+    'recordings had less than %g s of recording before heating and used all of it (at least %g s, with at ' ...
+    'least 10 artifact-free 10 s windows, was required; %d recording(s) excluded for too little ' ...
+    'baseline).</p>'], median(base_len), min(base_len), ...
     max(base_len), sum(base_len < cfg.base_dur_s - 1e-6), numel(base_len), cfg.base_dur_s, cfg.base_min_s, ...
     sum(failed_baseline))}];
 failed = res(in_cohort & ~analysed);
@@ -139,13 +167,19 @@ html = [html, {'<h2>Mice without a depth value</h2>', ...
     'half of the 10 s windows in it are artifact-free. %s</p>'], note), ...
     table_html({'Group', 'Window after offset', 'Analysed', 'With a depth', 'Recording ended', 'Too much artifact'}, rows)}];
 
-%% 3. Figure 1: example
-html = [html, {'<h2>Figure 1: example seizure</h2>', ...
-    image_html(fullfile(fig_dir, 'figure1.png'), opts.embed_images, 560), ...
-    sprintf(['<p class="cap">Mouse %d (%s, spreadsheet row %d), seizure %.0f s. A: raw ECoG, detected spikes ' ...
-    'outside the seizure (green). B: spectrogram, power relative to baseline. C&ndash;E: amplitude, slowing ' ...
-    'and spiking in 10 s windows (dots) and their 30 s moving average (line); yellow = seizure; grey = artifact.</p>'], ...
-    example.mouse_id, esc(example.project), example.sheet_row, example.sz_dur_s)}];
+%% 3. Figure 1: example seizures, one column each
+ex_txt = cell(1, numel(example));
+for j = 1:numel(example)
+    ex_txt{j} = sprintf('%s: mouse %d (%s, spreadsheet row %d), seizure %.0f s, amplitude %.2f &times; baseline over 0&ndash;1 min', ...
+        sprintf('%c&ndash;%c', 'A' + 5 * (j - 1), 'A' + 5 * (j - 1) + 4), example(j).mouse_id, ...
+        esc(example(j).project), example(j).sheet_row, example(j).sz_dur_s, example(j).depth_0_60s);
+end
+html = [html, {'<h2>Figure 1: example seizures</h2>', ...
+    image_html(fullfile(fig_dir, 'figure1.png'), opts.embed_images, 560 * numel(example)), ...
+    ['<p class="cap">' strjoin(ex_txt, '; ') '. In each column, from the top: raw ECoG, detected spikes ' ...
+    'outside the seizure (green); spectrogram, power relative to baseline; amplitude, slowing and spiking ' ...
+    'in 10 s windows (dots) and their 30 s moving average (line); yellow = seizure; grey = artifact. The ' ...
+    'columns share every y axis and the colour scale.</p>']}];
 
 %% 4. Spike detections (Figure S1)
 if exist(spike_file, 'file')
@@ -161,13 +195,13 @@ end
 %% 5. DS seizure vs controls, every measure and window (Figure 2, S3)
 html = [html, {'<h2>DS seizure vs controls (Figures 2 and S3)</h2>', ...
     image_html(fullfile(fig_dir, 'figure2.png'), opts.embed_images), ...
-    image_html(fullfile(fig_dir, 'figureS3_delta_theta.png'), opts.embed_images, 640), ...
+    image_html(fullfile(fig_dir, 'figureS3_slowing_bands.png'), opts.embed_images, 640), ...
     ['<p class="cap">Depth = the measure relative to the mouse''s pre-heating baseline, averaged over the ' ...
     'first N min after (pseudo-)offset. Group values: geometric mean (spiking: mean) with 95% CI. Effect: ' ...
     'DS seizure / controls as a ratio of geometric means (spiking: difference of means) with 95% CI, Welch ' ...
     't-test. p: Mann-Whitney U. At 0&ndash;' num2str(main_s / 60) ' min the three comparisons are the primary ' ...
     'hypotheses and are Bonferroni-corrected (corrected p in brackets; Figure 2''s asterisks use it); the other ' ...
-    'windows and delta and theta separately (Figure S3) are secondary, uncorrected.</p>'], ...
+    'windows and ' slow_bands{1} ' and ' slow_bands{2} ' separately (Figure S3) are secondary, uncorrected.</p>'], ...
     ['<p class="cap">' n_text(R.rms.missing, main_s, {'DS seizure', 'WT', 'DS no seizure'}) '</p>']}];
 for w = windows_s
     rows = cell(numel(measures), 5);
@@ -197,18 +231,19 @@ end
 html = [html, {sprintf('<h3>0&ndash;%g min after offset</h3>', main_s / 60), ...
     table_html({'Measure', 'WT (n)', 'DS no seizure (n)', 'Effect, DS no seizure / WT (95% CI)', 'p'}, rows)}];
 
-%% 7. Time course (Figures 3 and S4), with delta and theta at selected bins
+%% 7. Time course (Figures 3 and S4), with each band's power at selected bins
 html = [html, {'<h2>Time course (Figures 3 and S4)</h2>', ...
     image_html(fullfile(fig_dir, 'figure3.png'), opts.embed_images), ...
-    image_html(fullfile(fig_dir, 'figureS4_delta_theta_bins.png'), opts.embed_images, 700), ...
+    image_html(fullfile(fig_dir, 'figureS4_band_bins.png'), opts.embed_images, 700), ...
     '<p class="cap">30 s bins before onset and after offset; median and interquartile range across mice.</p>'}];
 html = [html, {['<p class="cap">' bin_n_text(Q3) '</p>']}];
 show_bins = [0 30 60 120 300 570];                   % bin start, s after offset
-rows = cell(numel(show_bins), 5);
+bands_q4 = unique({Q4.measure}, 'stable');           % the bands in Figure S4, in order
+rows = cell(numel(show_bins), 1 + 2 * numel(bands_q4));
 for b = 1:numel(show_bins)
     rows{b, 1} = sprintf('%g&ndash;%g s', show_bins(b), show_bins(b) + 30);
     col = 2;
-    for band = {'delta', 'theta'}
+    for band = bands_q4
         for grp = {'controls', 'DS seizure'}
             q = bin_row(Q4, band{1}, grp{1}, show_bins(b));
             if isempty(q) || isnan(q.median)
@@ -220,8 +255,12 @@ for b = 1:numel(show_bins)
         end
     end
 end
-html = [html, {'<h3>Delta and theta power after offset (median [IQR], ratio to baseline)</h3>', ...
-    table_html({'Time after offset', 'Delta: controls', 'Delta: DS seizure', 'Theta: controls', 'Theta: DS seizure'}, rows)}];
+band_head = {};
+for band = bands_q4
+    band_head = [band_head, {[band{1} ': controls'], [band{1} ': DS seizure']}]; %#ok<AGROW>
+end
+html = [html, {'<h3>Band power after offset (median [IQR], ratio to baseline)</h3>', ...
+    table_html([{'Time after offset'}, band_head], rows)}];
 
 %% 8. Seizure duration, age, sex, seizure 1 vs 2 (Figure S5)
 rows = cell(numel(T5), 5);
@@ -251,7 +290,7 @@ fprintf('Written to %s\n', out_file);
 end
 
 %% ------------------------------------------------------------------------
-function html = results_text(res, R, Q3, Q4, T5, perf, example, cfg)
+function html = results_text(res, R, Q3, Q4, T5, perf, perf_cond, example, cfg)
 % Draft Results paragraphs (HTML), every number from the outputs
 main_s = cfg.depth_main_s;
 min_txt = sprintf('%g', main_s / 60);                % '5'
@@ -352,6 +391,20 @@ else
         '(95%% CI %.2f&ndash;%.2f) and a positive predictive value of %.2f (%.2f&ndash;%.2f), with %.2f false ' ...
         'detections per minute on baseline pages.'], q.tmul, q.absthresh, q.n_mice, q.n_pages, q.tp + q.fn, ...
         q.sensitivity, q.sens_ci_low, q.sens_ci_high, q.ppv, q.ppv_ci_low, q.ppv_ci_high, qb.fp_per_min);
+    % Baseline vs post-ictal accuracy (spike_detector_performance step 4)
+    if ~isempty(perf_cond)
+        Cn = perf_cond;
+        cs = Cn(strcmp({Cn.measure}, 'sensitivity')); cp = Cn(strcmp({Cn.measure}, 'ppv'));
+        both_include_0 = cs.diff_ci_low <= 0 && cs.diff_ci_high >= 0 && cp.diff_ci_low <= 0 && cp.diff_ci_high >= 0;
+        if both_include_0, verdict = 'did not differ between'; else, verdict = 'differed between'; end
+        p_spk = sprintf(['%s Detection accuracy %s baseline and post-ictal pages (all %d animals; sensitivity ' ...
+            '%.2f vs %.2f, difference %+.2f, 95%% CI %.2f to %.2f; positive predictive value %.2f vs %.2f, ' ...
+            'difference %+.2f, 95%% CI %.2f to %.2f; bootstrap over animals).'], p_spk, verdict, cs.n_mice, ...
+            cs.baseline, cs.post, cs.difference, cs.diff_ci_low, cs.diff_ci_high, ...
+            cp.baseline, cp.post, cp.difference, cp.diff_ci_low, cp.diff_ci_high);
+    else
+        p_spk = [p_spk ' (Baseline vs post-ictal accuracy: rerun spike_detector_performance.)'];
+    end
 end
 spike_csv = fullfile(cfg.out_root, 'figures', 'figureS1_spike_examples.csv');
 if exist(spike_csv, 'file')
@@ -363,10 +416,29 @@ end
 html = [html, {'<h3>Spike detector validation</h3>', ['<p>' p_spk '</p>']}];
 
 % --- Post-ictal depth ---------------------------------------------------------
-primary = {'rms', 'delta_theta', 'spike_rate'};
+primary = cfg.primary_measures;                       % rms, cfg.slowing, spike_rate
+slow_bands = strsplit(cfg.slowing, '_');              % e.g. delta, alpha
+ratio_word = strjoin(slow_bands, '/');                % 'delta/alpha'
 short   = {'amplitude', 'slowing', 'spiking'};
-p1 = sprintf(['Figure 1 shows an example seizure (mouse %d, %.0f s), with its spectrogram and the amplitude, ' ...
-    'delta/theta ratio and spike rate over time.'], example.mouse_id, example.sz_dur_s);
+% Where each example's 0-1 min amplitude ranks among the DS seizure mice
+sz_pa = R.rms.pa(strcmp({R.rms.pa.group}, 'DS seizure'));
+d60 = [sz_pa.depth_0_60s]; d60 = d60(~isnan(d60));
+ex_parts = cell(1, numel(example));
+for j = 1:numel(example)
+    rank_j = sum(d60 < example(j).depth_0_60s) + 1;
+    ex_parts{j} = sprintf(['mouse %d (seizure %.0f s; amplitude %.2f &times; baseline over the first minute ' ...
+        'after offset, the %s lowest of %d)'], example(j).mouse_id, example(j).sz_dur_s, ...
+        example(j).depth_0_60s, ordinal(rank_j), numel(d60));
+end
+if numel(example) == 1
+    p1 = sprintf(['Figure 1 shows an example seizure, %s, with its spectrogram and the amplitude, ' ...
+        '%s ratio and spike rate over time.'], ex_parts{1}, ratio_word);
+else
+    words = {'two', 'three', 'four'};
+    p1 = sprintf(['Figure 1 shows %s example seizures, %s, with their spectrograms and the amplitude, ' ...
+        '%s ratio and spike rate over time (DS seizure group median over the first minute: %.2f).'], ...
+        words{min(numel(example), 4) - 1}, join_list(ex_parts), ratio_word, median(d60));
+end
 
 % Control subgroups (Figure S2): WT relative to DS no seizure, uncorrected
 sig = {}; ns = {};
@@ -412,7 +484,7 @@ p2 = sprintf('Comparing the two control subgroups at 0&ndash;%s min after (pseud
     min_txt, join_list(parts), combine);
 
 % DS seizure vs controls (Figure 2), Bonferroni-corrected
-labels = {'RMS amplitude', 'The delta/theta power ratio', 'Spike rate'};
+labels = {'RMS amplitude', ['The ' ratio_word ' power ratio'], 'Spike rate'};
 sentences = cell(1, 3); n_sig = 0;
 for m = 1:3
     X = R.(primary{m});
@@ -449,8 +521,8 @@ else
 end
 p3 = [lead ' ' strjoin(sentences, ' ')];
 
-% Delta and theta separately (Figure S3), uncorrected
-band_parts = cell(1, 2); bands = {'delta', 'theta'};
+% The slowing ratio's two bands separately (Figure S3), uncorrected
+band_parts = cell(1, 2); bands = slow_bands;
 for b = 1:2
     X = R.(bands{b});
     [mw, welch] = mw_row(X.stats, main_s, 'DS seizure vs controls');
@@ -484,21 +556,21 @@ t1 = sprintf(['In DS seizure mice, median amplitude relative to the pre-heating 
     a_post(1).median, mid_txt, a_post(end).median, bin_txt(a_post(end)));
 % Slowing and spiking: last bin, seizure vs control medians
 t2_parts = {};
-for meas = {'delta_theta', 'spike_rate'}
+for meas = {cfg.slowing, 'spike_rate'}
     qs = post(Q3, meas{1}, 'DS seizure'); qc = post(Q3, meas{1}, 'controls');
     last = min(qs(end).bin_start_s, qc(end).bin_start_s);
     qs = qs([qs.bin_start_s] == last); qc = qc([qc.bin_start_s] == last);
-    if strcmp(meas{1}, 'delta_theta')
-        t2_parts{end + 1} = sprintf('delta/theta ratio %.2f vs %.2f &times; baseline', qs.median, qc.median); %#ok<AGROW>
+    if strcmp(meas{1}, cfg.slowing)
+        t2_parts{end + 1} = sprintf('%s ratio %.2f vs %.2f &times; baseline', ratio_word, qs.median, qc.median); %#ok<AGROW>
     else
         t2_parts{end + 1} = sprintf('spike rate %+.1f vs %+.1f spikes/min relative to baseline', qs.median, qc.median); %#ok<AGROW>
     end
 end
 t2 = sprintf('In the last bin (%s after offset), median values in DS seizure mice vs controls were: %s.', ...
     bin_txt(qs), join_list(t2_parts));
-% Delta and theta (Figure S4): bins where DS seizure median is below / above controls
+% Each band (Figure S4): bins where DS seizure median is below / above controls
 bt = {};
-for band = {'delta', 'theta'}
+for band = unique({Q4.measure}, 'stable')
     qs = post(Q4, band{1}, 'DS seizure'); qc = post(Q4, band{1}, 'controls');
     [common, is_, ic] = intersect([qs.bin_start_s], [qc.bin_start_s]);
     above = [qs(is_).median] > [qc(ic).median];
@@ -516,7 +588,7 @@ for band = {'delta', 'theta'}
             sum(~above), numel(above)); %#ok<AGROW>
     end
 end
-t3 = sprintf('Separately (Figure S4), %s, and %s.', bt{1}, bt{2});
+t3 = sprintf('By frequency band (Figure S4; absolute power relative to baseline), %s.', join_list(bt));
 html = [html, {'<h3>Time course</h3>', ['<p>Time courses are shown in Figure 3 (group medians per 30 s bin). ' ...
     t1 ' ' t2 ' ' t3 '</p>']}];
 
@@ -693,6 +765,14 @@ elseif n_wt == 0
 else
     s = sprintf('%d mice (%d WT, %d DS)', n_wt + n_ds, n_wt, n_ds);
 end
+end
+
+function s = ordinal(k)
+% 1 -> '1st', 2 -> '2nd', 11 -> '11th', 23 -> '23rd'
+suffix = {'th', 'st', 'nd', 'rd'};
+if mod(k, 100) >= 11 && mod(k, 100) <= 13, s = sprintf('%dth', k); return; end
+d = mod(k, 10);
+if d >= 1 && d <= 3, s = sprintf('%d%s', k, suffix{d + 1}); else, s = sprintf('%dth', k); end
 end
 
 function s = join_list(c)

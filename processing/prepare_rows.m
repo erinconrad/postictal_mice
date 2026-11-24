@@ -29,8 +29,21 @@ function rows = prepare_rows(cfg)
 %       session, as a control.
 %     - seizures in cfg.excluded_seizures (reviewers disagreed whether
 %       there was a seizure) are left out, and so is the rest of that mouse.
+%   Rows of projects in cfg.excluded_projects are dropped first, as if they
+%   were not in the spreadsheet.
 
 rows = read_cohort_sheet(cfg.xlsx);
+
+%% 0. Projects left out entirely (cfg.excluded_projects)
+if isfield(cfg, 'excluded_projects') && ~isempty(cfg.excluded_projects)
+    drop = ismember(strtrim({rows.project}), cfg.excluded_projects);
+    for p = cfg.excluded_projects(:)'
+        is_p = strcmp(strtrim({rows.project}), p{1});
+        fprintf('Excluded project %s: %d recordings (%d mice) dropped\n', p{1}, sum(is_p), ...
+            numel(unique([rows(is_p).mouse_id])));
+    end
+    rows = rows(~drop);
+end
 
 %% 1. Group labels and flags
 for i = 1:numel(rows)
@@ -53,6 +66,21 @@ for k = 1:size(cfg.session_corrections, 1)
         fprintf('Session correction mouse %d, %d: not in the spreadsheet\n', mouse_id, date_num);
     end
     [rows(i).session] = deal(new_session);
+end
+
+%% 1a2. Raw stream to use where a session folder holds more than one
+%      (cfg.stream_choice; load_row_ecog.m passes it to find_oe_stream.m).
+%      NaN = the folder must hold exactly one raw stream.
+[rows.stream] = deal(NaN);
+if isfield(cfg, 'stream_choice')
+    for k = 1:size(cfg.stream_choice, 1)
+        [mouse_id, date_num, stream] = cfg.stream_choice{k, :};
+        i = find([rows.mouse_id] == mouse_id & [rows.rec_datenum] == yyyymmdd_to_datenum(date_num));
+        if isempty(i)
+            fprintf('Stream choice mouse %d, %d: not in the spreadsheet\n', mouse_id, date_num);
+        end
+        [rows(i).stream] = deal(stream);
+    end
 end
 
 %% 1b. Seizures left out (cfg.excluded_seizures: reviewers disagreed on

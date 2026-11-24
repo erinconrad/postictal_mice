@@ -73,16 +73,17 @@ h_img = imagesc(to_min(t_spec), freqs, power_db);
 set(h_img, 'AlphaData', double(~isnan(power_db)));
 set(ax, 'YDir', 'normal', 'CLim', clim, 'Color', [0.8 0.8 0.8]);
 colormap(ax, blue_white_red(256, clim));
-for band = {'delta', 'theta'}
+for band = strsplit(cfg.slowing, '_')              % the slowing ratio's two bands
     for e = cfg.bands{strcmp(cfg.bands(:, 1), band{1}), 2}
         plot(to_min([0 o.dur_s]), [e e], '--', 'Color', [0.2 0.2 0.2]);
     end
 end
 ylim([1 30]); ylabel('Hz'); title('Spectrogram, dB vs baseline (-20 to +10; white = baseline)', 'FontWeight', 'normal');
 
-% 3b-d. RMS, delta/theta, spike rate relative to baseline, one dot per window
-measures = {'rms', 'delta_theta', 'spike_rate'};
-titles = {'RMS / baseline', '\delta/\theta / baseline', 'Spikes/min - baseline'};
+% 3b-d. RMS, slowing (cfg.slowing), spike rate relative to baseline, one dot per window
+measures = cfg.primary_measures;
+[~, M_slow] = measure_view([], cfg.slowing);
+titles = {'RMS / baseline', M_slow.label, 'Spikes/min - baseline'};
 for m = 1:3
     ax = st.ax_full(1 + m); axes(ax); hold on %#ok<LAXES>
     [om, M] = measure_view(o, measures{m});
@@ -167,6 +168,7 @@ end
 function lines = window_text(o, k, n_spikes_shown)
 % This window's batch values, as numbers and relative to baseline
 it = find(strcmp(o.band_names, 'theta')); id = find(strcmp(o.band_names, 'delta'));
+ia = find(strcmp(o.band_names, 'alpha'));
 if o.artifact(k)
     lines = {sprintf('ARTIFACT (max |x| = %.0f uV):', o.max_abs_uV(k)); 'left out of every measure'};
     return
@@ -176,6 +178,9 @@ lines = {
     sprintf('RMS       %8.1f uV     %5.2fx baseline', 10^o.log_rms(k), 10^(o.log_rms(k) - o.base_mean))
     sprintf('delta     %8.0f uV^2   %5.2fx', 10^o.log_bp(k, id), 10^(o.log_bp(k, id) - o.base_bp(id)))
     sprintf('theta     %8.0f uV^2   %5.2fx', 10^o.log_bp(k, it), 10^(o.log_bp(k, it) - o.base_bp(it)))
+    sprintf('alpha     %8.0f uV^2   %5.2fx', 10^o.log_bp(k, ia), 10^(o.log_bp(k, ia) - o.base_bp(ia)))
+    sprintf('delta/al  %8.2f        %5.2fx', 10^(o.log_bp(k, id) - o.log_bp(k, ia)), ...
+        10^((o.log_bp(k, id) - o.log_bp(k, ia)) - (o.base_bp(id) - o.base_bp(ia))))
     sprintf('delta/th  %8.2f        %5.2fx', 10^o.log_dt(k), 10^(o.log_dt(k) - o.base_dt))
     sprintf('spikes    %3d = %4.1f/min  %+5.1f vs baseline', o.spike_count(k), o.spike_rate(k), ...
         o.spike_rate(k) - o.base_spike_rate)
@@ -191,7 +196,8 @@ function lines = depth_table(o, r, cfg)
 % (depth_window.m), as in per_animal.csv
 lines = {sprintf('Depth after offset  %s', strjoin(arrayfun(@(w) sprintf('0-%gmin', w / 60), ...
     cfg.depth_windows_s, 'UniformOutput', false), '  '))};
-names = {'rms', 'RMS'; 'delta_theta', 'delta/th'; 'spike_rate', 'spikes'; 'delta', 'delta'; 'theta', 'theta'};
+names = {'rms', 'RMS'; 'delta_alpha', 'delta/alpha'; 'delta_theta', 'delta/theta'; 'spike_rate', 'spikes'; ...
+    'delta', 'delta'; 'theta', 'theta'; 'alpha', 'alpha'};
 for m = 1:size(names, 1)
     om = measure_view(o, names{m, 1});
     vals = arrayfun(@(w) depth_window(om, r.sz_off, w), cfg.depth_windows_s);
