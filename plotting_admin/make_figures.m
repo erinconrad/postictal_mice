@@ -54,7 +54,7 @@ function make_figures(varargin)
 % recorded after offset) whose RMS depth over 0-5 min is closest to the
 % group median (a typical seizure).
 %
-% Outputs in <output>/figures/ (.png at 300 dpi and .pdf, plus the CSV
+% Outputs in <output>/figures/ (.png at 300 dpi and .svg, plus the CSV
 % files written by each figure function).
 
 %% 1. Settings and inputs
@@ -145,7 +145,7 @@ open_before = findall(0, 'Type', 'figure');           % figures you already had 
 draw_figure1(r, o_ex, cfg, opts, out_dir);
 close_new_figures(open_before);
 if opts.only_figure1
-    fprintf('Saved %s.png and .pdf only (only_figure1).\n', fullfile(out_dir, opts.fig1_file));
+    fprintf('Saved %s.png and .svg only (only_figure1).\n', fullfile(out_dir, opts.fig1_file));
     return
 end
 
@@ -175,7 +175,7 @@ make_bin_figure('measures', bands, 'names', band_titles, 'n_cols', 3, 'file_name
 close_new_figures(open_before);
 make_covariate_figure('file_name', 'figureS5_clinical');
 close_new_figures(open_before);
-fprintf('Written to %s (open the .png or .pdf files to view)\n', out_dir);
+fprintf('Written to %s (open the .png or .svg files to view)\n', out_dir);
 end
 
 %% ------------------------------------------------------------------------
@@ -352,7 +352,7 @@ end
 
 % 8. Save
 print(fig, fullfile(out_dir, [opts.fig1_file '.png']), '-dpng', '-r300');
-print(fig, fullfile(out_dir, [opts.fig1_file '.pdf']), '-dpdf', '-painters', '-bestfit');
+print(fig, fullfile(out_dir, [opts.fig1_file '.svg']), '-dsvg', '-painters');
 end
 
 function shade(x0, x1, yl, col)

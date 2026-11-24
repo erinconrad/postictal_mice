@@ -28,7 +28,7 @@ function T = make_covariate_figure(varargin)
 %             depth for both seizures (analyze_primary.m section 3).
 % Exploratory: p-values are not corrected for the 12 tests.
 %
-% Outputs in <output>/figures/: <file_name>.png (300 dpi) and .pdf, and
+% Outputs in <output>/figures/: <file_name>.png (300 dpi) and .svg, and
 % <file_name>_stats.csv (one row per measure and factor: test, n,
 % estimate, p). T: the same table as a struct array.
 
@@ -151,7 +151,7 @@ set_fonts(f, opts.font_size);
 
 %% 3. Save
 print(f, fullfile(out_dir, [opts.file_name '.png']), '-dpng', '-r300');
-print(f, fullfile(out_dir, [opts.file_name '.pdf']), '-dpdf', '-painters', '-bestfit');
+print(f, fullfile(out_dir, [opts.file_name '.svg']), '-dsvg', '-painters');
 write_results_csv(T, fullfile(out_dir, [opts.file_name '_stats.csv']));
 for k = 1:numel(T)
     fprintf('%-12s %-15s n = %2d  estimate = %6.2f  p = %s  (%s)\n', T(k).measure, T(k).factor, T(k).n, ...

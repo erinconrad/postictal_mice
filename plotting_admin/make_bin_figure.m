@@ -43,7 +43,7 @@ function T = make_bin_figure(varargin)
 % (dotted line at 1 = baseline), spike rate on a linear axis (dotted at 0).
 %
 % Outputs in <output>/figures/:
-%   <file_name>.png (300 dpi), <file_name>.pdf
+%   <file_name>.png (300 dpi), <file_name>.svg
 %   <file_name>_per_animal.csv   one row per animal and measure, one column
 %                         per bin (pre<a>_<b>: a to b s before onset;
 %                         post<a>_<b>: a to b s after offset)
@@ -214,7 +214,7 @@ set_fonts(f, opts.font_size);
 
 %% 6. Save the figure and the two tables
 print(f, fullfile(out_dir, [opts.file_name '.png']), '-dpng', '-r300');
-print(f, fullfile(out_dir, [opts.file_name '.pdf']), '-dpdf', '-bestfit');
+print(f, fullfile(out_dir, [opts.file_name '.svg']), '-dsvg', '-painters');   % vector; check that the IQR shading stays see-through
 write_results_csv(T, fullfile(out_dir, [opts.file_name '_per_animal.csv']));
 write_results_csv(Q, fullfile(out_dir, [opts.file_name '_summary.csv']));
 fprintf('Written to %s\n', out_dir);

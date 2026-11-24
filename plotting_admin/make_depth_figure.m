@@ -38,7 +38,7 @@ function f = make_depth_figure(varargin)
 %   geometric means (second group / first) for ratios, difference of means
 %   for spike rate, with 95% CI.
 %
-% Outputs in <output>/figures/: <file_name>.png (300 dpi) and .pdf.
+% Outputs in <output>/figures/: <file_name>.png (300 dpi) and .svg.
 
 %% 1. Settings and inputs
 addpath(fileparts(fileparts(mfilename('fullpath')))); setup_paths();
@@ -183,7 +183,7 @@ set_fonts(f, opts.font_size);
 %% 3. Save
 if ~isempty(opts.file_name)
     print(f, fullfile(out_dir, [opts.file_name '.png']), '-dpng', '-r300');
-    print(f, fullfile(out_dir, [opts.file_name '.pdf']), '-dpdf', '-painters', '-bestfit');
+    print(f, fullfile(out_dir, [opts.file_name '.svg']), '-dsvg', '-painters');
 end
 end
 

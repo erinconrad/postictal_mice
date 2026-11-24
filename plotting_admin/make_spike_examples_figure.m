@@ -26,7 +26,7 @@ function T = make_spike_examples_figure(varargin)
 % Spikes beyond the y range are marked at the edge. Grey shading = 10 s
 % windows left out as artifact.
 %
-% Outputs in <output>/figures/: <file_name>.png (300 dpi) and .pdf, and
+% Outputs in <output>/figures/: <file_name>.png (300 dpi) and .svg, and
 % <file_name>.csv (the mice shown and their number of detections).
 
 %% 1. Settings and inputs
@@ -120,7 +120,7 @@ set(findall(f, '-property', 'FontSize'), 'FontSize', opts.font_size);
 
 %% 3. Save
 print(f, fullfile(out_dir, [opts.file_name '.png']), '-dpng', '-r300');
-print(f, fullfile(out_dir, [opts.file_name '.pdf']), '-dpdf', '-painters', '-bestfit');
+print(f, fullfile(out_dir, [opts.file_name '.svg']), '-dsvg', '-painters');
 write_results_csv(T, fullfile(out_dir, [opts.file_name '.csv']));
 fprintf('Mice shown: %s\n', strjoin(arrayfun(@(t) sprintf('%d (%d spikes)', t.mouse_id, t.n_detections), T, ...
     'UniformOutput', false), ', '));
